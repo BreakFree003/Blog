@@ -190,7 +190,3 @@
 | 23 | RAG 上下文排版对缓存命中率的影响 | FlowVerify, 2026-05-22 | https://www.flowverify.co/blog/prompt-caching-production-hit-rate-prompt-structure |
 | 24 | 多轮对话中的增量缓存优化与 RAG 文档排版 | DEV Community, 2026-05-27 | https://dev.to/synthorai/llm-prompt-caching-the-complete-2026-guide-3mmb |
 
----
-
-![测试图片](.attachments/test.png)
-
