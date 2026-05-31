@@ -26,6 +26,36 @@ jobs:
           FILES=$(git diff-tree --root --no-commit-id --name-only -r HEAD | grep '\.md$' || true)
           echo "files=$FILES" >> $GITHUB_OUTPUT
 
+      - name: Get deleted md files
+        id: deleted
+        run: |
+          DELETED=$(git diff-tree --root --no-commit-id --diff-filter=D --name-only -r HEAD | grep '\.md$' || true)
+          echo "files=$DELETED" >> $GITHUB_OUTPUT
+
+      - name: Delete removed Discussions
+        if: steps.deleted.outputs.files != ''
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+        run: |
+          EXISTING=$(gh api graphql -f query='
+            query($owner: String!, $name: String!) {
+              repository(owner: $owner, name: $name) {
+                discussions(first: 100) {
+                  nodes { id body }
+                }
+              }
+            }' -f owner="${{ github.repository_owner }}" -f name="${{ github.event.repository.name }}")
+
+          for file in ${{ steps.deleted.outputs.files }}; do
+            FILENAME=$(basename "$file")
+            echo "Deleting discussion for: $FILENAME"
+            DISCUSSION_ID=$(echo "$EXISTING" | jq -r --arg src "<!-- source: ${FILENAME} -->" '.data.repository.discussions.nodes[] | select(.body | contains($src)) | .id' | head -1)
+            if [ -n "$DISCUSSION_ID" ] && [ "$DISCUSSION_ID" != "null" ]; then
+              echo "Deleting discussion: $DISCUSSION_ID"
+              gh api graphql -f query='mutation($discId: ID!) { deleteDiscussion(input: {id: $discId}) { discussion { id } } }' -f discId="$DISCUSSION_ID"
+            fi
+          done
+
       - name: Publish to Discussions
         if: steps.changed.outputs.files != ''
         env:
@@ -46,6 +76,15 @@ jobs:
 
           RAW_URL="https://raw.githubusercontent.com/${{ github.repository }}/main"
 
+          EXISTING=$(gh api graphql -f query='
+            query($owner: String!, $name: String!) {
+              repository(owner: $owner, name: $name) {
+                discussions(first: 100) {
+                  nodes { id body }
+                }
+              }
+            }' -f owner="${{ github.repository_owner }}" -f name="${{ github.event.repository.name }}")
+
           for file in ${{ steps.changed.outputs.files }}; do
             if [ -f "$file" ]; then
               FILENAME=$(basename "$file")
@@ -60,15 +99,6 @@ jobs:
               CONTENT="$(printf '<!-- source: %s -->\n%s' "$FILENAME" "$CONTENT")"
 
               echo "Processing: $TITLE (file: $FILENAME)"
-
-              EXISTING=$(gh api graphql -f query='
-                query($owner: String!, $name: String!) {
-                  repository(owner: $owner, name: $name) {
-                    discussions(first: 100) {
-                      nodes { id body }
-                    }
-                  }
-                }' -f owner="${{ github.repository_owner }}" -f name="${{ github.event.repository.name }}")
 
               DISCUSSION_ID=$(echo "$EXISTING" | jq -r --arg src "<!-- source: ${FILENAME} -->" '.data.repository.discussions.nodes[] | select(.body | contains($src)) | .id' | head -1)
 
