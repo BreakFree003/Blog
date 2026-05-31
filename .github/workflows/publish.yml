@@ -48,6 +48,7 @@ jobs:
 
           for file in ${{ steps.changed.outputs.files }}; do
             if [ -f "$file" ]; then
+              FILENAME=$(basename "$file")
               TITLE=$(grep -m1 '^# ' "$file" | sed 's/^# //')
               if [ -z "$TITLE" ]; then
                 TITLE=$(basename "$file" .md)
@@ -56,18 +57,45 @@ jobs:
               CONTENT=$(cat "$file")
               CONTENT=$(echo "$CONTENT" | sed "s|](\./attachments/|](${RAW_URL}/.attachments/|g")
               CONTENT=$(echo "$CONTENT" | sed "s|](\.attachments/|](${RAW_URL}/.attachments/|g")
+              CONTENT="<!-- source: ${FILENAME} -->\n${CONTENT}"
 
-              echo "Publishing: $TITLE"
-              gh api graphql \
-                -f query='
-                mutation($repoId: ID!, $catId: ID!, $title: String!, $body: String!) {
-                  createDiscussion(input: {repositoryId: $repoId, categoryId: $catId, title: $title, body: $body}) {
-                    discussion { url }
+              echo "Processing: $TITLE (file: $FILENAME)"
+
+              EXISTING=$(gh api graphql -f query='
+                query($owner: String!, $name: String!) {
+                  repository(owner: $owner, name: $name) {
+                    discussions(first: 100) {
+                      nodes { id body }
+                    }
                   }
-                }' \
-                -f repoId="$REPO_ID" \
-                -f catId="$CATEGORY_ID" \
-                -f title="$TITLE" \
-                -f body="$CONTENT"
+                }' -f owner="${{ github.repository_owner }}" -f name="${{ github.event.repository.name }}")
+
+              DISCUSSION_ID=$(echo "$EXISTING" | jq -r --arg src "<!-- source: ${FILENAME} -->" '.data.repository.discussions.nodes[] | select(.body | contains($src)) | .id' | head -1)
+
+              if [ -n "$DISCUSSION_ID" ] && [ "$DISCUSSION_ID" != "null" ]; then
+                echo "Updating existing discussion: $DISCUSSION_ID"
+                gh api graphql \
+                  -f query='
+                  mutation($discId: ID!, $body: String!) {
+                    updateDiscussion(input: {discussionId: $discId, body: $body}) {
+                      discussion { url }
+                    }
+                  }' \
+                  -f discId="$DISCUSSION_ID" \
+                  -f body="$CONTENT"
+              else
+                echo "Creating new discussion"
+                gh api graphql \
+                  -f query='
+                  mutation($repoId: ID!, $catId: ID!, $title: String!, $body: String!) {
+                    createDiscussion(input: {repositoryId: $repoId, categoryId: $catId, title: $title, body: $body}) {
+                      discussion { url }
+                    }
+                  }' \
+                  -f repoId="$REPO_ID" \
+                  -f catId="$CATEGORY_ID" \
+                  -f title="$TITLE" \
+                  -f body="$CONTENT"
+              fi
             fi
           done
