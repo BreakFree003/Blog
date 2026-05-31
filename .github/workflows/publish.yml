@@ -24,13 +24,13 @@ jobs:
       - name: Get changed md files
         id: changed
         run: |
-          FILES=$(git diff-tree --root --no-commit-id --name-only -r HEAD | grep '\.md$' || true)
+          FILES=$(git diff-tree --root --no-commit-id --name-only -r HEAD | grep '\.md$' | grep -v '^README.md$' || true)
           echo "files=$FILES" >> $GITHUB_OUTPUT
 
       - name: Get deleted md files
         id: deleted
         run: |
-          DELETED=$(git diff-tree --root --no-commit-id --diff-filter=D --name-only -r HEAD | grep '\.md$' || true)
+          DELETED=$(git diff-tree --root --no-commit-id --diff-filter=D --name-only -r HEAD | grep '\.md$' | grep -v '^README.md$' || true)
           echo "files=$DELETED" >> $GITHUB_OUTPUT
 
       - name: Delete removed Discussions
