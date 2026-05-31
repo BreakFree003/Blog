@@ -190,5 +190,4 @@
 | 22 | Few-shot 示例的数据泄漏风险与跨租户安全 | tianpan.co, 2026-05-13 | https://tianpan.co/blog/2026-05-13-tenancy-leaks-few-shot-examples-cross-customer-prompt-store |
 | 23 | RAG 上下文排版对缓存命中率的影响 | FlowVerify, 2026-05-22 | https://www.flowverify.co/blog/prompt-caching-production-hit-rate-prompt-structure |
 | 24 | 多轮对话中的增量缓存优化与 RAG 文档排版 | DEV Community, 2026-05-27 | https://dev.to/synthorai/llm-prompt-caching-the-complete-2026-guide-3mmb |
- |
 
