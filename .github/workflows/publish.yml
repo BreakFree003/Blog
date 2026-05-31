@@ -1,0 +1,73 @@
+name: Publish to Discussions
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '*.md'
+
+permissions:
+  discussions: write
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Get changed md files
+        id: changed
+        run: |
+          FILES=$(git diff-tree --no-commit-id --name-only -r HEAD | grep '\.md$' || true)
+          echo "files=$FILES" >> $GITHUB_OUTPUT
+
+      - name: Publish to Discussions
+        if: steps.changed.outputs.files != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REPO_INFO=$(gh api graphql -f query='
+            query($owner: String!, $name: String!) {
+              repository(owner: $owner, name: $name) {
+                id
+                discussionCategories(first: 10) {
+                  nodes { id name }
+                }
+              }
+            }' -f owner="${{ github.repository_owner }}" -f name="${{ github.event.repository.name }}")
+
+          REPO_ID=$(echo "$REPO_INFO" | jq -r '.data.repository.id')
+          CATEGORY_ID=$(echo "$REPO_INFO" | jq -r '.data.repository.discussionCategories.nodes[0].id')
+
+          RAW_URL="https://raw.githubusercontent.com/${{ github.repository }}/main"
+
+          for file in ${{ steps.changed.outputs.files }}; do
+            if [ -f "$file" ]; then
+              TITLE=$(grep -m1 '^# ' "$file" | sed 's/^# //')
+              if [ -z "$TITLE" ]; then
+                TITLE=$(basename "$file" .md)
+              fi
+
+              CONTENT=$(cat "$file")
+              CONTENT=$(echo "$CONTENT" | sed "s|](\./attachments/|](${RAW_URL}/.attachments/|g")
+              CONTENT=$(echo "$CONTENT" | sed "s|](\.attachments/|](${RAW_URL}/.attachments/|g")
+
+              echo "Publishing: $TITLE"
+              gh api graphql \
+                -f query='
+                mutation($repoId: ID!, $catId: ID!, $title: String!, $body: String!) {
+                  createDiscussion(input: {repositoryId: $repoId, categoryId: $catId, title: $title, body: $body}) {
+                    discussion { url }
+                  }
+                }' \
+                -f repoId="$REPO_ID" \
+                -f catId="$CATEGORY_ID" \
+                -f title="$TITLE" \
+                -f body="$CONTENT"
+            fi
+          done
